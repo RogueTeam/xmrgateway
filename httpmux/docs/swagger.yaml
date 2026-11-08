@@ -50,7 +50,7 @@ info:
   description: Monero price API for everyone, on the clearnet and on an onion address
     for hidden services.
   title: xmrgateway
-  version: 0.1.0
+  version: 0.1.1
 paths:
   /challenges:
     post:
