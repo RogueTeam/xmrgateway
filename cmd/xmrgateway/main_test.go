@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -28,9 +29,13 @@ const argsEnv = "XMRGATEWAY_TEST_ARGS"
 // codes, usage output and signal handling are checked as users see them.
 func TestMain(m *testing.M) {
 	if raw, ok := os.LookupEnv(argsEnv); ok {
-		var args []string
-		if err := json.Unmarshal([]byte(raw), &args); err != nil {
-			panic(err)
+		// Children started by the daemon command inherit the variable but
+		// carry their own arguments.
+		args := os.Args[1:]
+		if len(args) == 0 {
+			if err := json.Unmarshal([]byte(raw), &args); err != nil {
+				panic(err)
+			}
 		}
 		os.Args = append([]string{"xmrgateway"}, args...)
 		main()
@@ -211,6 +216,8 @@ func TestCLI(t *testing.T) {
 				}},
 			},
 			{Name: "pow help", Input: Input{Args: []string{"pow", "-h"}}, Expect: Expect{Stderr: []string{"usage: xmrgateway pow [flags] PAYLOAD DIFFICULTY", "-until"}}},
+			{Name: "daemon help", Input: Input{Args: []string{"daemon", "-h"}}, Expect: Expect{Stderr: []string{"-restart-interval", "-config", "-chdir-home"}}},
+			{Name: "server help", Input: Input{Args: []string{"server", "-h"}}, Expect: Expect{Stderr: []string{"-log-time"}}},
 		}
 		for _, test := range tests {
 			t.Run(test.Name, func(t *testing.T) {
@@ -285,6 +292,12 @@ func TestCLI(t *testing.T) {
 				Expect: Expect{1, []string{"server: config.json:\n", "secret must be at least 32 characters"}},
 			},
 			{Name: "daemon without a config", Input: Input{Args: []string{"daemon"}}, Expect: Expect{1, []string{"daemon: open config.json"}}},
+			{
+				Name:   "daemon with an invalid config",
+				Input:  Input{Args: []string{"daemon"}, Files: map[string]string{"config.json": `{"secret":"short"}`}},
+				Expect: Expect{1, []string{"daemon: config.json:\n", "secret must be at least 32 characters"}},
+			},
+			{Name: "daemon with a bad interval", Input: Input{Args: []string{"daemon", "-restart-interval", "soon"}}, Expect: Expect{2, []string{"invalid value \"soon\" for flag -restart-interval"}}},
 			{Name: "install for real off OpenBSD", Input: Input{Args: []string{"install"}}, Expect: Expect{1, []string{"install: install only supports OpenBSD, use -dry-run to see the steps"}}},
 			{Name: "deploy onto a file", Input: Input{Args: []string{"deploy", "-dir", "f"}, Files: map[string]string{"f": ""}}, Expect: Expect{1, []string{"deploy: ", "not a directory"}}},
 			{Name: "token with a bad proxy", Input: Input{Args: []string{"token", "-proxy", "http://[::1"}}, Expect: Expect{1, []string{"token: ", "missing ']'"}}},
@@ -318,17 +331,16 @@ func mustAbs(t *testing.T, p string) string {
 // TestServe starts server and daemon as real processes, talks to them and
 // stops them with a signal.
 func TestServe(t *testing.T) {
-	addrRe := regexp.MustCompile(`\.addr=(\S+)`)
-
 	t.Run("Succeed", func(t *testing.T) {
 		type (
 			Input struct {
-				Command string
-				Signal  syscall.Signal
+				Args       []string
+				KillServer bool
+				Signal     syscall.Signal
 			}
 			Expect struct {
 				Timestamps bool
-				Group      string
+				Starts     int
 			}
 			Test struct {
 				Name   string
@@ -337,69 +349,45 @@ func TestServe(t *testing.T) {
 			}
 		)
 		tests := []Test{
-			{Name: "server stops on SIGTERM", Input: Input{"server", syscall.SIGTERM}, Expect: Expect{true, "server."}},
-			{Name: "server stops on interrupt", Input: Input{"server", syscall.SIGINT}, Expect: Expect{true, "server."}},
-			{Name: "daemon logs without time", Input: Input{"daemon", syscall.SIGTERM}, Expect: Expect{false, "daemon."}},
+			{Name: "server stops on SIGTERM", Input: Input{Args: []string{"server"}, Signal: syscall.SIGTERM}, Expect: Expect{true, 1}},
+			{Name: "server stops on interrupt", Input: Input{Args: []string{"server"}, Signal: syscall.SIGINT}, Expect: Expect{true, 1}},
+			{Name: "server without time", Input: Input{Args: []string{"server", "-log-time=false"}, Signal: syscall.SIGTERM}, Expect: Expect{false, 1}},
+			{Name: "daemon stops its server on SIGTERM", Input: Input{Args: []string{"daemon"}, Signal: syscall.SIGTERM}, Expect: Expect{false, 1}},
+			{Name: "daemon stops its server on interrupt", Input: Input{Args: []string{"daemon"}, Signal: syscall.SIGINT}, Expect: Expect{false, 1}},
+			{
+				Name:   "daemon restarts a killed server",
+				Input:  Input{Args: []string{"daemon", "-restart-interval", "2s"}, KillServer: true, Signal: syscall.SIGTERM},
+				Expect: Expect{false, 2},
+			},
 		}
 		for _, test := range tests {
 			t.Run(test.Name, func(t *testing.T) {
 				dir := t.TempDir()
 				writeFiles(t, dir, map[string]string{"config.json": validConfig(nil)})
-				cmd := process(t, dir, nil, test.Input.Command)
-				stderr, _ := cmd.StderrPipe()
-				if err := cmd.Start(); err != nil {
-					t.Fatal(err)
-				}
-
-				lines := make(chan string, 100)
-				go func() {
-					sc := bufio.NewScanner(stderr)
-					for sc.Scan() {
-						lines <- sc.Text()
+				s := launch(t, dir, test.Input.Args...)
+				addr, pid := s.listening(t)
+				home(t, addr)
+				if test.Input.KillServer {
+					syscall.Kill(pid, syscall.SIGKILL)
+					again, newPid := s.listening(t)
+					if newPid == pid {
+						t.Fatal("same server pid after the restart")
 					}
-					close(lines)
-				}()
-				var log []string
-				var addr string
-				deadline := time.After(10 * time.Second)
-				for addr == "" {
-					select {
-					case line, ok := <-lines:
-						if !ok {
-							t.Fatalf("exited before listening:\n%s", strings.Join(log, "\n"))
-						}
-						log = append(log, line)
-						if m := addrRe.FindStringSubmatch(line); m != nil && strings.Contains(line, "msg=listening") {
-							addr = m[1]
-						}
-					case <-deadline:
-						t.Fatalf("never listened:\n%s", strings.Join(log, "\n"))
-					}
+					home(t, again)
 				}
 
-				resp, err := http.Get("http://" + addr + "/")
-				if err != nil {
-					t.Fatal(err)
+				code, all := s.finish(t, test.Input.Signal)
+				if code != 0 {
+					t.Fatalf("exit %d:\n%s", code, all)
 				}
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Generate token") {
-					t.Fatalf("home: %d", resp.StatusCode)
-				}
-
-				cmd.Process.Signal(test.Input.Signal)
-				for line := range lines {
-					log = append(log, line)
-				}
-				if err := cmd.Wait(); err != nil {
-					t.Fatalf("exit: %v\n%s", err, strings.Join(log, "\n"))
-				}
-				all := strings.Join(log, "\n")
-				if !strings.Contains(all, "msg=\"shutting down\"") || !strings.Contains(all, test.Expect.Group+"PriceWorker") {
+				if !strings.Contains(all, `msg="shutting down"`) || !strings.Contains(all, "server.PriceWorker") {
 					t.Errorf("missing shutdown or worker logs:\n%s", all)
 				}
-				if strings.Contains(all, "time=") != test.Expect.Timestamps {
+				if timeAttr.MatchString(all) != test.Expect.Timestamps {
 					t.Errorf("timestamps = %v:\n%s", !test.Expect.Timestamps, all)
+				}
+				if n := strings.Count(all, "msg=listening"); n != test.Expect.Starts {
+					t.Errorf("server started %d times, want %d", n, test.Expect.Starts)
 				}
 			})
 		}
@@ -416,18 +404,7 @@ func TestServe(t *testing.T) {
 			}
 		)
 		tests := []Test{
-			{
-				Name: "port in use",
-				Input: Input{func(t *testing.T) string {
-					ln, err := net.Listen("tcp", "127.0.0.1:0")
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Cleanup(func() { ln.Close() })
-					return ln.Addr().String()
-				}},
-				Expect: Expect{"address already in use"},
-			},
+			{Name: "port in use", Input: Input{busyPort}, Expect: Expect{"address already in use"}},
 			{Name: "address that cannot be bound", Input: Input{func(*testing.T) string { return "256.0.0.1:80" }}, Expect: Expect{"server: listen tcp"}},
 		}
 		for _, test := range tests {
@@ -442,4 +419,154 @@ func TestServe(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("Fail under daemon", func(t *testing.T) {
+		type (
+			Input  struct{ Listen func(t *testing.T) string }
+			Expect struct {
+				Stderr   string
+				Attempts int
+			}
+			Test struct {
+				Name   string
+				Input  Input
+				Expect Expect
+			}
+		)
+		tests := []Test{
+			{Name: "keeps retrying a server that cannot listen", Input: Input{busyPort}, Expect: Expect{"address already in use", 2}},
+		}
+		for _, test := range tests {
+			t.Run(test.Name, func(t *testing.T) {
+				dir := t.TempDir()
+				listen := test.Input.Listen(t)
+				writeFiles(t, dir, map[string]string{"config.json": validConfig(func(c *config.Config) { c.Listen = listen })})
+				s := launch(t, dir, "daemon", "-restart-interval", "2s")
+				for range test.Expect.Attempts {
+					s.until(t, test.Expect.Stderr)
+				}
+				if code, all := s.finish(t, syscall.SIGTERM); code != 0 {
+					t.Fatalf("exit %d:\n%s", code, all)
+				}
+			})
+		}
+	})
+}
+
+func busyPort(t *testing.T) string {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	return ln.Addr().String()
+}
+
+func home(t *testing.T, addr string) {
+	t.Helper()
+	resp, err := http.Get("http://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Generate token") {
+		t.Fatalf("home: %d", resp.StatusCode)
+	}
+}
+
+// session is a running command whose stderr is read line by line.
+type session struct {
+	cmd   *exec.Cmd
+	lines chan string
+	log   []string
+}
+
+func launch(t *testing.T, dir string, args ...string) *session {
+	t.Helper()
+	cmd := process(t, dir, nil, args...)
+	stderr, _ := cmd.StderrPipe()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	s := &session{cmd: cmd, lines: make(chan string, 1000)}
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			s.lines <- sc.Text()
+		}
+		close(s.lines)
+	}()
+	// The pipe only closes once every process holding it exited, so this
+	// also waits for children left behind.
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		for range s.lines {
+		}
+		cmd.Wait()
+	})
+	return s
+}
+
+// until reads lines until one contains substr and returns it.
+func (s *session) until(t *testing.T, substr string) string {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case line, ok := <-s.lines:
+			if !ok {
+				t.Fatalf("exited before %q:\n%s", substr, strings.Join(s.log, "\n"))
+			}
+			s.log = append(s.log, line)
+			if strings.Contains(line, substr) {
+				return line
+			}
+		case <-deadline:
+			t.Fatalf("no %q:\n%s", substr, strings.Join(s.log, "\n"))
+		}
+	}
+}
+
+var timeAttr = regexp.MustCompile(`(?m)^time=\d{4}-`)
+
+var listenRe = regexp.MustCompile(`\.addr=(\S+) server\.pid=(\d+)`)
+
+func (s *session) listening(t *testing.T) (addr string, pid int) {
+	t.Helper()
+	m := listenRe.FindStringSubmatch(s.until(t, "msg=listening"))
+	if m == nil {
+		t.Fatalf("listening line without addr and pid:\n%s", strings.Join(s.log, "\n"))
+	}
+	pid, _ = strconv.Atoi(m[2])
+	return m[1], pid
+}
+
+// finish signals the command, reads the rest of its output and returns its
+// exit code with everything it logged.
+func (s *session) finish(t *testing.T, sig syscall.Signal) (int, string) {
+	t.Helper()
+	s.cmd.Process.Signal(sig)
+	deadline := time.After(20 * time.Second)
+	for done := false; !done; {
+		select {
+		case line, ok := <-s.lines:
+			if !ok {
+				done = true
+				break
+			}
+			s.log = append(s.log, line)
+		case <-deadline:
+			t.Fatalf("did not exit, or left a child holding stderr:\n%s", strings.Join(s.log, "\n"))
+		}
+	}
+	err := s.cmd.Wait()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return exit.ExitCode(), strings.Join(s.log, "\n")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return 0, strings.Join(s.log, "\n")
 }

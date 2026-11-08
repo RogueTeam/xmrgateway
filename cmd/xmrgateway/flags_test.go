@@ -390,6 +390,7 @@ func TestCommands(t *testing.T) {
 			{Name: "install for real", Input: Input{Run: installCmd}, Expect: Expect{"only supports OpenBSD"}},
 			{Name: "pow bad difficulty", Input: Input{Run: powCmd, Args: []string{"p", "x"}}, Expect: Expect{"DIFFICULTY must be a number"}},
 			{Name: "serve invalid", Input: Input{Run: serverCmd, Files: map[string]string{"config.json": `{}`}}, Expect: Expect{"secret must be"}},
+			{Name: "daemon invalid", Input: Input{Run: daemonCmd, Files: map[string]string{"config.json": `{}`}}, Expect: Expect{"secret must be"}},
 			{Name: "token bad proxy", Input: Input{Run: tokenCmd, Args: []string{"-proxy", "http://[::1"}}, Expect: Expect{"missing ']'"}},
 			{Name: "prices bad proxy", Input: Input{Run: pricesCmd, Args: []string{"-proxy", "http://[::1"}}, Expect: Expect{"missing ']'"}},
 		}

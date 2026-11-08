@@ -51,8 +51,8 @@ anything else.
 
 | Command   | Does |
 |-----------|------|
-| `server`  | Serves the API, the website and the static files. |
-| `daemon`  | Same as `server`, with log lines left for syslog to timestamp. The rc.d script runs this. |
+| `server`  | Serves the API, the website and the static files. `-log-time=false` leaves the time to syslog. |
+| `daemon`  | Runs `server` as a child and restarts it when it exits. The rc.d script runs this. |
 | `install` | Installs the binary as an OpenBSD rc.d service. |
 | `deploy`  | Writes the embedded static assets to `-dir` (default `static`). |
 | `pow`     | `pow PAYLOAD DIFFICULTY` solves a challenge on every core and prints the stamp. `-until` waits for `not_before` first. |
@@ -157,6 +157,14 @@ Memory and file limits come from the login class in
 `/etc/login.conf.d/xmrgateway` (`-datasize`, `-openfiles`). rc.subr runs a
 daemon with the login class named like its rc.d script, so nothing else
 needs to point at it. Logs go to syslog as `daemon.info`.
+
+rc.d does not restart a service that dies, so `daemon` does: it checks the
+config, then keeps one `server -log-time=false` child running and starts a
+new one when it exits, at most once per `-restart-interval` (default 10s,
+2s minimum). A small worker process sits between them and stops the server
+if `daemon` itself is killed, so `rcctl stop` and `kill -9` never leave a
+server behind. `daemon` only pledges `stdio rpath proc exec`; the server
+starts unpledged after exec and locks itself down as below.
 
 After reading the config, `server` unveils only the static directory,
 `/etc/resolv.conf` and `/etc/hosts` (read only), then pledges

@@ -12,7 +12,7 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"daemon":  {daemonCmd, "like server, logging for syslog; used by the rc.d script"},
+	"daemon":  {daemonCmd, "run server and restart it when it exits; used by the rc.d script"},
 	"install": {installCmd, "install as an OpenBSD rc.d service"},
 	"server":  {serverCmd, "serve the API and the website"},
 	"deploy":  {deployCmd, "write the static assets to disk"},

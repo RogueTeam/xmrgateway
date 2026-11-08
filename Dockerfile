@@ -3,7 +3,7 @@ ARG VERSION=dev
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /xmrgateway ./cmd/xmrgateway \
-    && mkdir /srv && cd /srv && /xmrgateway deploy
+    && /xmrgateway deploy -dir /srv/static
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
