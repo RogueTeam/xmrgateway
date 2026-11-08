@@ -4,7 +4,7 @@
         "description": "Monero price API for everyone, on the clearnet and on an onion address for hidden services.",
         "title": "xmrgateway",
         "contact": {},
-        "version": "0.1.1"
+        "version": "0.1.2"
     },
     "basePath": "/api/v1",
     "paths": {
