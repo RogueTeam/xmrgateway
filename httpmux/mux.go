@@ -18,7 +18,7 @@ import (
 )
 
 // @title                      xmrgateway
-// @version                    0.1.4
+// @version                    0.1.5
 // @description                Monero price API for everyone, on the clearnet and on an onion address for hidden services.
 // @BasePath                   /api/v1
 // @securityDefinitions.apikey APIToken
