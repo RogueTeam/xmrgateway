@@ -1,6 +1,6 @@
 {
   "name": "xmrgateway",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Monero price API for everyone, on the clearnet and on an onion address",
   "repository": "github:RogueTeam/xmrgateway",
