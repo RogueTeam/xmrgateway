@@ -1,0 +1,14 @@
+{
+  "name": "xmrgateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monero price API for everyone, on the clearnet and on an onion address",
+  "repository": "github:RogueTeam/xmrgateway",
+  "scripts": {
+    "release": "standard-version",
+    "docs": "go generate ./httpmux"
+  },
+  "devDependencies": {
+    "standard-version": "^9.5.0"
+  }
+}

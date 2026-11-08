@@ -1,0 +1,188 @@
+basePath: /api/v1
+definitions:
+  api.Challenge:
+    properties:
+      difficulty:
+        type: integer
+      expires_at:
+        type: string
+      id:
+        example: 0d5e4bd2-2c32-4f3e-9a7a-2f6a0e1c9b11
+        type: string
+      not_before:
+        type: string
+    type: object
+  api.Error:
+    properties:
+      error:
+        example: rate limited
+        type: string
+      retry_at:
+        type: string
+    type: object
+  api.Price:
+    properties:
+      currency:
+        example: USD
+        type: string
+      next_request_at:
+        type: string
+      price:
+        example: "312.45"
+        type: string
+      updated_at:
+        type: string
+    type: object
+  api.RedeemRequest:
+    properties:
+      stamp:
+        type: string
+    type: object
+  api.Token:
+    properties:
+      expires_at:
+        type: string
+      token:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Monero price API for everyone, on the clearnet and on an onion address
+    for hidden services.
+  title: xmrgateway
+  version: 0.1.0
+paths:
+  /challenges:
+    post:
+      description: Solve it with a hashcash stamp and redeem the stamp at /tokens
+        between not_before and expires_at.
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.Challenge'
+        "503":
+          description: too many pending challenges
+          schema:
+            $ref: '#/definitions/api.Error'
+      summary: Request a challenge
+      tags:
+      - tokens
+  /challenges/{id}:
+    get:
+      parameters:
+      - description: challenge id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Challenge'
+        "404":
+          description: unknown, used or expired
+          schema:
+            $ref: '#/definitions/api.Error'
+      summary: Look up a pending challenge
+      tags:
+      - tokens
+  /price:
+    get:
+      description: One request per token per rate limit window. next_request_at says
+        when the token may ask again.
+      parameters:
+      - default: USD
+        description: ISO 4217 code, or BTC
+        in: query
+        name: currency
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Price'
+        "401":
+          description: invalid or expired token
+          schema:
+            $ref: '#/definitions/api.Error'
+        "404":
+          description: unknown currency
+          schema:
+            $ref: '#/definitions/api.Error'
+        "429":
+          description: rate limited, or no token
+          headers:
+            Retry-After:
+              description: seconds until the next allowed request
+              type: integer
+          schema:
+            $ref: '#/definitions/api.Error'
+        "503":
+          description: no recent price
+          schema:
+            $ref: '#/definitions/api.Error'
+      security:
+      - APIToken: []
+      summary: Price of 1 XMR
+      tags:
+      - price
+  /tokens:
+    post:
+      consumes:
+      - application/json
+      description: A stamp that fails the proof of work burns its challenge.
+      parameters:
+      - description: solved stamp
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.RedeemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.Token'
+        "400":
+          description: malformed stamp
+          schema:
+            $ref: '#/definitions/api.Error'
+        "403":
+          description: not enough work, challenge burned
+          schema:
+            $ref: '#/definitions/api.Error'
+        "404":
+          description: unknown or already used challenge
+          schema:
+            $ref: '#/definitions/api.Error'
+        "410":
+          description: challenge expired
+          schema:
+            $ref: '#/definitions/api.Error'
+        "425":
+          description: too early, see retry_at
+          headers:
+            Retry-After:
+              description: seconds until the stamp can be redeemed
+              type: integer
+          schema:
+            $ref: '#/definitions/api.Error'
+      summary: Redeem a stamp for a token
+      tags:
+      - tokens
+securityDefinitions:
+  APIToken:
+    in: header
+    name: X-API-Token
+    type: apiKey
+swagger: "2.0"

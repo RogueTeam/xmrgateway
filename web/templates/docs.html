@@ -1,0 +1,61 @@
+{{define "title"}}API · xmrgateway{{end}}
+
+{{define "content"}}
+<hgroup>
+  <h1>API</h1>
+  <p>{{.Spec.Info.Description}} Base path <code>{{.Spec.BasePath}}</code>. Machine-readable: <a href="/docs/swagger.json">swagger.json</a>, <a href="/docs/swagger.yaml">swagger.yaml</a>.</p>
+</hgroup>
+
+<section>
+  <h2>Getting a token</h2>
+  <ol>
+    <li><code>POST /api/v1/challenges</code> returns a challenge id, its difficulty ({{.Difficulty}} bits) and the window to redeem it, which opens {{human .MinWait}} after it was issued and closes after {{human .Lifetime}}.</li>
+    <li>Compute a hashcash stamp for the id. Redeeming early is refused however fast you are.</li>
+    <li><code>POST /api/v1/tokens</code> with the stamp returns a token valid for {{human .TokenValidity}}.</li>
+    <li>Send it as <code>X-API-Token</code> to <code>GET /api/v1/price</code>, once {{every .RateLimit}}.</li>
+  </ol>
+  <p>Every price response tells you when to ask next in <code>next_request_at</code>. A <code>429</code> carries <code>Retry-After</code> in seconds, at most {{human .RateLimit}}, and <code>retry_at</code> in UTC; a request without a token also gets <code>429</code>, and an invalid or expired token gets <code>401</code>.</p>
+</section>
+
+<section id="hashcash">
+  <h2>Stamp format</h2>
+  <p>Hashcash version 1, seven fields separated by colons:</p>
+  <pre><code>1:BITS:TIME:CHALLENGE_ID:EXTENSION:RANDOM:COUNTER</code></pre>
+  <p><code>BITS</code> is at least the challenge difficulty and <code>TIME</code> uses the layout <code>2006-01-02T15/04/05Z0700</code>. <code>COUNTER</code> is 8 bytes, big endian, standard base64. The stamp is valid when its SHA-224 digest starts with <code>BITS</code> zero bits.</p>
+  <p>The <code>pow</code> command makes one, using every core. <code>PAYLOAD</code> is the challenge id and <code>DIFFICULTY</code> its number of bits:</p>
+  <pre><code>go run github.com/RogueTeam/xmrgateway/cmd/xmrgateway@latest pow PAYLOAD DIFFICULTY</code></pre>
+  <p>Add <code>-until</code> with the challenge's <code>not_before</code> to have it wait until the stamp can be redeemed before printing it.</p>
+</section>
+
+<section>
+  <h2>Endpoints</h2>
+  {{range .Endpoints}}
+  <article id="{{.Anchor}}">
+    <header><kbd>{{.Method}}</kbd> <code>{{.Path}}</code></header>
+    <p><strong>{{.Summary}}</strong>{{with .Description}}<br>{{.}}{{end}}</p>
+    {{if .Secured}}<p><small>Requires the <code>X-API-Token</code> header.</small></p>{{end}}
+    {{with .Parameters}}
+    <div class="overflow-auto"><table>
+      <thead><tr><th>Parameter</th><th>In</th><th>Description</th></tr></thead>
+      <tbody>{{range .}}<tr><td><code>{{.Name}}</code>{{if .Required}} *{{end}}</td><td>{{.In}}</td><td>{{.Description}}</td></tr>{{end}}</tbody>
+    </table></div>
+    {{end}}
+    <div class="overflow-auto"><table>
+      <thead><tr><th>Status</th><th>Body</th><th>Description</th></tr></thead>
+      <tbody>{{range .Responses}}<tr><td><code>{{.Status}}</code></td><td>{{with .Schema}}<code>{{.}}</code>{{end}}</td><td>{{.Description}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </article>
+  {{end}}
+</section>
+
+<section>
+  <h2>Objects</h2>
+  {{range .Models}}
+  <h4 id="model-{{.Name}}"><code>{{.Name}}</code></h4>
+  <div class="overflow-auto"><table>
+    <thead><tr><th>Field</th><th>Type</th><th>Example</th></tr></thead>
+    <tbody>{{range .Fields}}<tr><td><code>{{.Name}}</code></td><td>{{.Type}}</td><td>{{with .Example}}<code>{{.}}</code>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+</section>
+{{end}}

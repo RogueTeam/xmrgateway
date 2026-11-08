@@ -1,0 +1,26 @@
+{
+  "$schema": "./internal/config/config.schema.json",
+  "listen": "127.0.0.1:8080",
+  "request_timeout": "30s",
+  "log_level": "info",
+  "static_dir": "static",
+  "public_url": "https://xmrgateway.com",
+  "onion_url": "http://xmrgatewayexampleonionaddressxxxxxxxxxxxxxxxxxxxxxxxxxxx.onion",
+  "clearnet_hosts": [
+    "xmrgateway.com",
+    "www.xmrgateway.com"
+  ],
+  "donation_address": "",
+  "secret": "change-me-to-at-least-32-random-characters",
+  "token_validity": "2160h",
+  "challenge_lifetime": "1h",
+  "challenge_min_wait": "30s",
+  "pow_difficulty": 24,
+  "max_challenges": 1000000,
+  "rate_limit": "30s",
+  "price_refresh": "10m",
+  "price_max_age": "30m",
+  "max_deviation_bps": 500,
+  "fetch_timeout": "30s",
+  "upstream_proxy": ""
+}

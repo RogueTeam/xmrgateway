@@ -1,0 +1,283 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Monero price API for everyone, on the clearnet and on an onion address for hidden services.",
+        "title": "xmrgateway",
+        "contact": {},
+        "version": "0.1.0"
+    },
+    "basePath": "/api/v1",
+    "paths": {
+        "/challenges": {
+            "post": {
+                "description": "Solve it with a hashcash stamp and redeem the stamp at /tokens between not_before and expires_at.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Request a challenge",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/api.Challenge"
+                        }
+                    },
+                    "503": {
+                        "description": "too many pending challenges",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Look up a pending challenge",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "challenge id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.Challenge"
+                        }
+                    },
+                    "404": {
+                        "description": "unknown, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/price": {
+            "get": {
+                "security": [
+                    {
+                        "APIToken": []
+                    }
+                ],
+                "description": "One request per token per rate limit window. next_request_at says when the token may ask again.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "price"
+                ],
+                "summary": "Price of 1 XMR",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "USD",
+                        "description": "ISO 4217 code, or BTC",
+                        "name": "currency",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.Price"
+                        }
+                    },
+                    "401": {
+                        "description": "invalid or expired token",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "unknown currency",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "429": {
+                        "description": "rate limited, or no token",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "seconds until the next allowed request"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "no recent price",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/tokens": {
+            "post": {
+                "description": "A stamp that fails the proof of work burns its challenge.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tokens"
+                ],
+                "summary": "Redeem a stamp for a token",
+                "parameters": [
+                    {
+                        "description": "solved stamp",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.RedeemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/api.Token"
+                        }
+                    },
+                    "400": {
+                        "description": "malformed stamp",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "403": {
+                        "description": "not enough work, challenge burned",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "unknown or already used challenge",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "410": {
+                        "description": "challenge expired",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        }
+                    },
+                    "425": {
+                        "description": "too early, see retry_at",
+                        "schema": {
+                            "$ref": "#/definitions/api.Error"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "seconds until the stamp can be redeemed"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.Challenge": {
+            "type": "object",
+            "properties": {
+                "difficulty": {
+                    "type": "integer"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "0d5e4bd2-2c32-4f3e-9a7a-2f6a0e1c9b11"
+                },
+                "not_before": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.Error": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "rate limited"
+                },
+                "retry_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.Price": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string",
+                    "example": "USD"
+                },
+                "next_request_at": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "string",
+                    "example": "312.45"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.RedeemRequest": {
+            "type": "object",
+            "properties": {
+                "stamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.Token": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "APIToken": {
+            "type": "apiKey",
+            "name": "X-API-Token",
+            "in": "header"
+        }
+    }
+}

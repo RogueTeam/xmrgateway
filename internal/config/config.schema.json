@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RogueTeam/xmrgateway/internal/config/config.schema.json",
+  "title": "xmrgateway configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "secret"
+  ],
+  "$defs": {
+    "duration": {
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "examples": [
+        "30s",
+        "1h",
+        "2160h"
+      ]
+    },
+    "webURL": {
+      "type": "string",
+      "pattern": "^https?://[^/\\s]+"
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "listen": {
+      "type": "string",
+      "description": "Address the HTTP server listens on.",
+      "default": "127.0.0.1:8080"
+    },
+    "request_timeout": {
+      "$ref": "#/$defs/duration",
+      "description": "Deadline for each HTTP request, from the first byte read to the last byte written.",
+      "default": "30s"
+    },
+    "log_level": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "default": "info"
+    },
+    "static_dir": {
+      "type": "string",
+      "description": "Directory written by `xmrgateway deploy` and served at /static/.",
+      "default": "static"
+    },
+    "public_url": {
+      "$ref": "#/$defs/webURL",
+      "description": "Clearnet base URL used in the commands shown to users.",
+      "default": "https://xmrgateway.com"
+    },
+    "onion_url": {
+      "type": "string",
+      "pattern": "^$|^https?://[a-z2-7]{56}\\.onion/?$",
+      "description": "Onion service base URL, advertised with the Onion-Location header."
+    },
+    "clearnet_hosts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^/:\\s]+$"
+      },
+      "description": "Host names whose responses carry the Onion-Location header.",
+      "examples": [
+        [
+          "xmrgateway.com",
+          "www.xmrgateway.com"
+        ]
+      ]
+    },
+    "donation_address": {
+      "type": "string",
+      "pattern": "^$|^[48][1-9A-HJ-NP-Za-km-z]{94}([1-9A-HJ-NP-Za-km-z]{11})?$",
+      "description": "Monero address shown on the home page."
+    },
+    "secret": {
+      "type": "string",
+      "minLength": 32,
+      "description": "HMAC key that signs API tokens. Changing it invalidates every token."
+    },
+    "token_validity": {
+      "$ref": "#/$defs/duration",
+      "description": "How long an API token stays valid; 2160h is 90 days. Tokens never outlive this, and lowering it also shortens tokens already issued.",
+      "default": "2160h"
+    },
+    "challenge_lifetime": {
+      "$ref": "#/$defs/duration",
+      "description": "How long a challenge can be redeemed after it was issued.",
+      "default": "1h"
+    },
+    "challenge_min_wait": {
+      "$ref": "#/$defs/duration",
+      "description": "Minimum time between requesting a challenge and redeeming it, however fast the client solves it.",
+      "default": "30s"
+    },
+    "pow_difficulty": {
+      "type": "integer",
+      "minimum": 8,
+      "maximum": 40,
+      "description": "Leading zero bits the hashcash stamp must have. Each extra bit doubles the work.",
+      "default": 24
+    },
+    "max_challenges": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "description": "Pending challenges kept in memory.",
+      "default": 1000000
+    },
+    "rate_limit": {
+      "$ref": "#/$defs/duration",
+      "description": "Minimum time between two price requests with the same token.",
+      "default": "30s"
+    },
+    "price_refresh": {
+      "$ref": "#/$defs/duration",
+      "description": "How often the price worker polls the sources and swaps in the new prices.",
+      "default": "10m"
+    },
+    "price_max_age": {
+      "$ref": "#/$defs/duration",
+      "description": "Quotes older than this are ignored, and the API stops answering if the last refresh is older.",
+      "default": "30m"
+    },
+    "max_deviation_bps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "Quotes further than this from the median are rejected, in basis points (500 = 5%).",
+      "default": 500
+    },
+    "fetch_timeout": {
+      "$ref": "#/$defs/duration",
+      "description": "Per-source request timeout.",
+      "default": "30s"
+    },
+    "upstream_proxy": {
+      "type": "string",
+      "pattern": "^$|^(https?|socks5h?)://",
+      "description": "Proxy for upstream requests, e.g. socks5h://127.0.0.1:9050 to poll sources through Tor."
+    }
+  },
+  "description": "Every field except secret is optional. A missing or zero value takes the default shown here."
+}

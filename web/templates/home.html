@@ -1,0 +1,71 @@
+{{define "title"}}xmrgateway · Monero price API{{end}}
+
+{{define "content"}}
+<section>
+  <hgroup>
+    <h1>Monero prices for everyone</h1>
+    <p>A small JSON API with the price of XMR, open to anyone. It also answers on an onion address, so a hidden service gets its prices without a clearnet jump box or any other server outside Tor.</p>
+  </hgroup>
+  <form method="post" action="/token" role="group">
+    <button type="submit">Generate token</button>
+    <a href="/docs" role="button" class="secondary">API docs</a>
+  </form>
+</section>
+
+<section class="grid">
+  <article>
+    <header><strong>1. Solve</strong></header>
+    Request a challenge and compute a hashcash stamp with {{.Difficulty}} leading zero bits, then wait at least {{human .MinWait}} from the moment it was issued.
+  </article>
+  <article>
+    <header><strong>2. Redeem</strong></header>
+    Trade the stamp for an API token valid for {{human .TokenValidity}}.
+  </article>
+  <article>
+    <header><strong>3. Ask</strong></header>
+    Send the token in the <code>X-API-Token</code> header, once {{every .RateLimit}}.
+  </article>
+</section>
+
+<section>
+  <h2>Response</h2>
+  <pre><code>GET /api/v1/price?currency=USD
+
+{{.Examples.Price}}</code></pre>
+  <p>Prices are decimal strings: two decimals for fiat, eight for BTC. <code>next_request_at</code> is the earliest UTC time the same token may ask again.</p>
+</section>
+
+<section>
+  <h2>Rate limit</h2>
+  <p>One price request per token {{every .RateLimit}}. Asking earlier, or without a token, returns <code>429 Too Many Requests</code>. When a token is rate limited the answer carries a <code>Retry-After</code> header and the same moment as <code>retry_at</code>:</p>
+  <pre><code>HTTP/1.1 429 Too Many Requests
+Retry-After: {{.Examples.RetryAfter}}
+
+{{.Examples.TooMany}}</code></pre>
+</section>
+
+<section>
+  <h2>Where prices come from</h2>
+  <p>The gateway polls the same exchanges and aggregators as the Haveno price node {{every .Refresh}}. Each one votes, directly through its XMR markets or through XMR/BTC times its BTC price. Votes further than {{bps .MaxDeviationBps}} from the median are thrown out and the rest are averaged, so a single broken or malicious source cannot move the price.</p>
+  {{with .Currencies}}<p>{{range .}}<kbd>{{.}}</kbd> {{end}}</p>{{end}}
+</section>
+
+<section id="about">
+  <h2>About</h2>
+  <h3>Why hidden services use it</h3>
+  <p>Price APIs live on the clearnet, and many of them block or challenge visitors coming from Tor. A hidden service that wants to show Monero prices usually ends up building and deploying something outside Tor to get them: a clearnet jump box that polls the exchanges and passes the numbers back in. That is one more server to write, secure and pay for, and one more link between the service and a clearnet address.</p>
+  <p>xmrgateway removes that piece. It already does the polling and answers on an onion address, so the hidden service asks for prices over Tor like any other request. Nothing has to be implemented or deployed outside Tor.</p>
+  {{with .Site.OnionURL}}<p>The onion address to use:</p>
+  <pre><code>{{.}}</code></pre>{{end}}
+  <h3>For everyone else</h3>
+  <p>The same API is on the clearnet, with no exchange accounts, no API keys and no price feed of your own to run. One HTTP call is enough.</p>
+  <p>It is open source. The code is at <a href="https://github.com/RogueTeam/xmrgateway">github.com/RogueTeam/xmrgateway</a>, so you can read it, run your own instance or send fixes.</p>
+  <p><small>The service is provided as is, without any guarantee of availability or accuracy. Check prices independently before relying on them for anything that matters.</small></p>
+</section>
+
+<section id="donate">
+  <h2>Donate</h2>
+  <p>xmrgateway is free to use. Donations keep the servers running.</p>
+  <pre><code>{{or .Site.DonationAddress "Donation address coming soon"}}</code></pre>
+</section>
+{{end}}

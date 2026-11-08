@@ -1,0 +1,5 @@
+.git
+bin
+static
+node_modules
+config.json

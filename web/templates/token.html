@@ -1,0 +1,63 @@
+{{define "title"}}Generate a token · xmrgateway{{end}}
+
+{{define "content"}}
+{{with .Challenge}}
+<hgroup>
+  <h1>Generate your token</h1>
+  <p>The work happens on your machine. This page only tells you what to run.</p>
+</hgroup>
+
+<div class="overflow-auto">
+  <table>
+    <tbody>
+      <tr><th scope="row">Challenge</th><td><code>{{.ID}}</code></td></tr>
+      <tr><th scope="row">Difficulty</th><td>{{.Difficulty}} bits</td></tr>
+      <tr><th scope="row">Redeem after</th><td>{{utc .NotBefore}}</td></tr>
+      <tr><th scope="row">Expires</th><td>{{utc .ExpiresAt}}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<section>
+  <h2>1. Solve the challenge</h2>
+  <p>This prints a stamp. It only needs Go, and works on an offline machine too.</p>
+  <pre><code>{{$.Commands.Pow}}</code></pre>
+</section>
+
+<section>
+  <h2>2. Redeem the stamp</h2>
+  <p>Not before {{utc .NotBefore}}. Replace <code>STAMP</code> with what step 1 printed; the answer holds your token.</p>
+  {{range $.Commands.Networks}}
+  <p><strong>{{.Name}}</strong></p>
+  <pre><code>{{.Redeem}}</code></pre>
+  {{end}}
+  {{if $.Site.OnionURL}}<p><small>curl takes its proxy from <code>http_proxy</code>. With <code>socks5h</code> the onion address is resolved by Tor itself. A system Tor listens on port 9050; the one bundled with Tor Browser on 9150.</small></p>{{end}}
+</section>
+
+<section>
+  <h2>Or both at once</h2>
+  <p><code>-until</code> makes <code>pow</code> wait for the window to open, then curl sends the stamp it prints.</p>
+  {{range $.Commands.Networks}}
+  <p><strong>{{.Name}}</strong></p>
+  <pre><code>{{.OneShot}}</code></pre>
+  {{end}}
+</section>
+
+<section>
+  <h2>3. Ask for the price</h2>
+  <p>Replace <code>TOKEN</code> with your token. It stays valid for {{human $.TokenValidity}} and answers once {{every $.RateLimit}}.</p>
+  {{range $.Commands.Networks}}
+  <p><strong>{{.Name}}</strong></p>
+  <pre><code>{{.Price}}</code></pre>
+  {{end}}
+</section>
+
+<p><small>Stamps are plain hashcash, so any language can make them. The format is in the <a href="/docs#hashcash">docs</a>.</small></p>
+{{else}}
+<hgroup>
+  <h1>{{or $.Notice "Challenge not found"}}</h1>
+  <p>{{if $.Notice}}Try again in a minute.{{else}}It expired, was already used, or never existed.{{end}}</p>
+</hgroup>
+<form method="post" action="/token"><button type="submit">Generate a new one</button></form>
+{{end}}
+{{end}}
