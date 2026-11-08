@@ -1,0 +1,38 @@
+# Tor configuration for an xmrgateway onion service on OpenBSD.
+#
+#   pkg_add tor
+#   cp torrc.example /etc/tor/torrc
+#   tor --verify-config
+#   rcctl enable tor && rcctl start tor
+#   cat /var/tor/xmrgateway/hostname
+#
+# Put that hostname in config.json as "onion_url": "http://<hostname>".
+#
+# Back up /var/tor/xmrgateway/hs_ed25519_secret_key offline. It is the onion
+# address: lose it and the address is gone, leak it and anyone can serve it.
+
+User _tor
+DataDirectory /var/tor
+RunAsDaemon 1
+Log notice syslog
+
+# Only publish the onion service: no SOCKS port, never a relay.
+SocksPort 0
+
+# To poll the exchanges through Tor instead of from this machine's IP, use
+# this line instead of the one above and set "upstream_proxy" to
+# "socks5h://127.0.0.1:9050" in config.json. Some exchanges block Tor exits,
+# so fewer sources vote on the price.
+#SocksPort 127.0.0.1:9050 IsolateDestAddr
+
+HiddenServiceDir /var/tor/xmrgateway
+HiddenServicePort 80 127.0.0.1:8080
+
+# Under a flood, clients have to solve a puzzle before they get in. Idle
+# services ask for no work, so normal visitors never notice.
+HiddenServicePoWDefensesEnabled 1
+# Introduction points rate limit new clients (25/s, bursts of 200).
+HiddenServiceEnableIntroDoSDefense 1
+# A browser opens about 6 connections; drop circuits that open far more.
+HiddenServiceMaxStreams 16
+HiddenServiceMaxStreamsCloseCircuit 1
